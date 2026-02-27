@@ -29,12 +29,10 @@ let currentNutriScore = "";
 let currentSearch = "";
 
 // --- DOM Elements ---
+const cuisinesContainer = document.getElementById("cuisines-container");
 const categoriesGrid = document.getElementById("categories-grid");
 const recipesGrid = document.getElementById("recipes-grid");
 const recipesCount = document.getElementById("recipes-count");
-const cuisinesContainer = document.querySelector(
-  "#search-filters-section .flex.items-center.gap-3",
-);
 const searchInput = document.getElementById("search-input");
 
 const productsGrid = document.getElementById("products-grid");
@@ -47,9 +45,6 @@ const loggedItemsList = document.getElementById("logged-items-list");
 const foodDay = document.getElementById("foodlog-date");
 
 const sidebarLinks = document.querySelectorAll("#sidebar .nav-link");
-const allSections = document.querySelectorAll(
-  "section, #all-recipes-section, #meal-details",
-);
 
 // Elements for Meal Details
 const mealDetailsSection = document.getElementById("meal-details");
@@ -60,7 +55,16 @@ const mealCategoriesSection = document.getElementById(
 const searchFiltersSection = document.getElementById("search-filters-section");
 const backBtn = document.getElementById("back-to-meals-btn");
 
-// HTML للودر الداخلي جوه الجريد (للوصفات والمنتجات)
+// View Toggle Elements
+const gridViewBtn = document.getElementById("grid-view-btn");
+const listViewBtn = document.getElementById("list-view-btn");
+
+// Sidebar Toggle Elements
+const sidebar = document.getElementById("sidebar");
+const sidebarOverlay = document.getElementById("sidebar-overlay");
+const headerMenuBtn = document.getElementById("header-menu-btn");
+const sidebarCloseBtn = document.getElementById("sidebar-close-btn");
+
 const spinnerHTML = `<div class="col-span-full flex justify-center items-center py-16 w-full"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div></div>`;
 
 // --- Dashboard Functions ---
@@ -110,17 +114,95 @@ function renderLoggedItemsList() {
 }
 
 // --- API & Core Functions ---
+
+async function loadCuisines() {
+  try {
+    const data = await fetchData(`${API_BASE}/list.php?a=list`);
+
+    if (!cuisinesContainer) return;
+
+    cuisinesContainer.innerHTML = `
+      <span class="text-sm font-semibold text-gray-500 whitespace-nowrap">
+        <i class="fa-solid fa-earth-americas mr-1"></i> Cuisines:
+      </span>
+      <button class="cuisine-btn px-4 py-2 bg-emerald-600 text-white rounded-full font-medium text-sm whitespace-nowrap shadow-sm transition-all" data-area="All">
+        All Recipes
+      </button>
+    `;
+
+    data.meals.forEach((area) => {
+      if (area.strArea !== "Unknown") {
+        cuisinesContainer.innerHTML += `
+          <button class="cuisine-btn px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-full font-medium text-sm whitespace-nowrap transition-all" data-area="${area.strArea}">
+            ${area.strArea}
+          </button>
+        `;
+      }
+    });
+
+    document.querySelectorAll(".cuisine-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        document.querySelectorAll(".cuisine-btn").forEach((b) => {
+          b.classList.remove("bg-emerald-600", "text-white", "shadow-sm");
+          b.classList.add("bg-gray-100", "text-gray-700", "hover:bg-gray-200");
+        });
+
+        const clickedBtn = e.target.closest(".cuisine-btn");
+        clickedBtn.classList.remove(
+          "bg-gray-100",
+          "text-gray-700",
+          "hover:bg-gray-200",
+        );
+        clickedBtn.classList.add("bg-emerald-600", "text-white", "shadow-sm");
+
+        const area = clickedBtn.dataset.area;
+        if (area === "All") {
+          loadRecipes("Chicken");
+        } else {
+          loadRecipesByArea(area);
+        }
+      });
+    });
+  } catch (error) {
+    console.error("Error loading cuisines", error);
+  }
+}
+
+async function loadRecipesByArea(area) {
+  try {
+    recipesGrid.innerHTML = spinnerHTML;
+    recipesCount.textContent = `Loading ${area} recipes...`;
+
+    const data = await fetchData(`${API_BASE}/filter.php?a=${area}`);
+    recipesGrid.innerHTML = "";
+
+    const meals = data.meals ? data.meals.slice(0, 25) : [];
+    recipesCount.textContent = `Showing ${meals.length} recipes`;
+
+    meals.forEach((meal) => {
+      recipesGrid.innerHTML += createRecipeCard(meal);
+    });
+  } catch (error) {
+    recipesGrid.innerHTML = `<p class="col-span-full text-center text-red-500 py-10">Failed to load recipes.</p>`;
+    recipesCount.textContent = "Error";
+  }
+}
+
 async function loadCategories() {
   const data = await fetchData(`${API_BASE}/categories.php`);
   categoriesGrid.innerHTML = "";
+
+  categoriesGrid.className =
+    "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4";
+
   data.categories.forEach((cat) => {
     categoriesGrid.innerHTML += `
-      <div class="category-card bg-gradient-to-br from-emerald-50 to-teal-50 rounded-xl p-3 border border-emerald-200 hover:border-emerald-400 hover:shadow-md cursor-pointer transition-all group" data-category="${cat.strCategory}">
-        <div class="flex items-center gap-2.5">
-          <div class="w-9 h-9 rounded-lg overflow-hidden flex items-center justify-center bg-white shadow-sm group-hover:scale-110 transition-transform">
-            <img src="${cat.strCategoryThumb}" alt="${cat.strCategory}" class="w-full h-full object-cover" />
+      <div class="category-card bg-white rounded-xl p-3 border border-gray-100 shadow-sm hover:border-emerald-500 hover:shadow-md cursor-pointer transition-all group flex items-center justify-center" data-category="${cat.strCategory}">
+        <div class="flex flex-col items-center gap-2 text-center w-full">
+          <div class="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center overflow-hidden border border-emerald-100 group-hover:bg-emerald-100 transition-colors shrink-0">
+            <img src="${cat.strCategoryThumb}" alt="${cat.strCategory}" class="w-10 h-10 object-contain group-hover:scale-110 transition-transform" />
           </div>
-          <div><h3 class="text-sm font-bold text-gray-900">${cat.strCategory}</h3></div>
+          <h3 class="text-sm font-semibold text-gray-700 group-hover:text-emerald-700 transition-colors w-full truncate px-1">${cat.strCategory}</h3>
         </div>
       </div>
     `;
@@ -129,13 +211,13 @@ async function loadCategories() {
 
 async function loadRecipes(category = "Chicken") {
   try {
-    recipesGrid.innerHTML = spinnerHTML; // عرض اللودر في الجريد
+    recipesGrid.innerHTML = spinnerHTML;
     recipesCount.textContent = `Loading recipes...`;
 
     const data = await fetchData(`${API_BASE}/filter.php?c=${category}`);
-    recipesGrid.innerHTML = ""; // مسح اللودر
+    recipesGrid.innerHTML = "";
 
-    const meals = data.meals.slice(0, 25);
+    const meals = data.meals ? data.meals.slice(0, 25) : [];
     recipesCount.textContent = `Showing ${meals.length} recipes`;
     meals.forEach((meal) => {
       recipesGrid.innerHTML += createRecipeCard(meal);
@@ -148,7 +230,7 @@ async function loadRecipes(category = "Chicken") {
 
 async function loadProducts() {
   try {
-    productsGrid.innerHTML = spinnerHTML; // عرض اللودر في الجريد
+    productsGrid.innerHTML = spinnerHTML;
     productsCount.textContent = "Searching products...";
 
     const params = new URLSearchParams({
@@ -166,7 +248,7 @@ async function loadProducts() {
     const data = await fetchData(`${OPEN_FOOD_API}?${params.toString()}`);
     const products = data.products || [];
 
-    productsGrid.innerHTML = ""; // مسح اللودر
+    productsGrid.innerHTML = "";
     productsCount.textContent = `${products.length} products found`;
 
     if (!products.length) {
@@ -257,9 +339,8 @@ function addProductToLog(product) {
   });
 }
 
-// --- Meal Details Logic ---
 async function loadMealDetails(id) {
-  showInnerLoader(); // إظهار اللودر اللي في نص الشاشة
+  showInnerLoader();
   try {
     const data = await fetchData(`${API_BASE}/lookup.php?i=${id}`);
     const meal = data.meals[0];
@@ -357,24 +438,92 @@ async function loadMealDetails(id) {
   } catch (error) {
     console.error("Error loading details:", error);
   } finally {
-    hideInnerLoader(); // إخفاء اللودر اللي في نص الشاشة بعد ما الداتا تحمل
+    hideInnerLoader();
   }
 }
 
-// --- Event Listeners ---
+// --- Event Listeners & Core Logic ---
+
+// ** 1. Mobile Sidebar Toggle Functions **
+function openSidebar() {
+  if (sidebar) {
+    // إزالة كلاس الإخفاء
+    sidebar.classList.remove("-translate-x-full");
+    // إجبار السايد بار على الدخول للشاشة (يتخطى أي كود CSS آخر)
+    sidebar.style.transform = "translateX(0)"; 
+  }
+  if (sidebarOverlay) sidebarOverlay.classList.remove("hidden");
+}
+
+function closeSidebar() {
+  if (sidebar) {
+    // إعادة كلاس الإخفاء
+    sidebar.classList.add("-translate-x-full");
+    // مسح الستايل الإجباري ليعود لوضعه الطبيعي خارج الشاشة
+    sidebar.style.transform = ""; 
+  }
+  if (sidebarOverlay) sidebarOverlay.classList.add("hidden");
+}
+
+if (headerMenuBtn) headerMenuBtn.addEventListener("click", openSidebar);
+if (sidebarCloseBtn) sidebarCloseBtn.addEventListener("click", closeSidebar);
+if (sidebarOverlay) sidebarOverlay.addEventListener("click", closeSidebar);
+
+// ** 2. Initialization on Load **
 document.addEventListener("DOMContentLoaded", () => {
   if (foodDay) foodDay.innerText = formatDate(new Date());
   setTimeout(hideLoader, 1000);
 
   updateDashboard();
   loadCategories();
+  loadCuisines();
   loadRecipes();
 });
 
-// Sidebar Navigation
+// ** 3. Grid/List View Toggle Logic **
+gridViewBtn?.addEventListener("click", () => {
+  recipesGrid.className =
+    "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 transition-all duration-300";
+
+  gridViewBtn.classList.add("bg-white", "shadow-sm");
+  gridViewBtn
+    .querySelector("i")
+    .classList.replace("text-gray-500", "text-gray-700");
+
+  listViewBtn.classList.remove("bg-white", "shadow-sm");
+  listViewBtn
+    .querySelector("i")
+    .classList.replace("text-gray-700", "text-gray-500");
+});
+
+listViewBtn?.addEventListener("click", () => {
+  recipesGrid.className = "grid grid-cols-1 gap-5 transition-all duration-300";
+
+  listViewBtn.classList.add("bg-white", "shadow-sm");
+  listViewBtn
+    .querySelector("i")
+    .classList.replace("text-gray-500", "text-gray-700");
+
+  gridViewBtn.classList.remove("bg-white", "shadow-sm");
+  gridViewBtn
+    .querySelector("i")
+    .classList.replace("text-gray-700", "text-gray-500");
+});
+
+// ** 4. Sidebar Navigation Corrected **
+const mainSections = [
+  document.getElementById("search-filters-section"),
+  document.getElementById("meal-categories-section"),
+  document.getElementById("all-recipes-section"),
+  document.getElementById("meal-details"),
+  document.getElementById("products-section"),
+  document.getElementById("foodlog-section"),
+];
+
 sidebarLinks.forEach((link) => {
   link.addEventListener("click", (e) => {
     e.preventDefault();
+
     sidebarLinks.forEach((l) => {
       l.classList.remove("bg-emerald-50", "text-emerald-700");
       l.classList.add("text-gray-600", "hover:bg-gray-50");
@@ -382,7 +531,11 @@ sidebarLinks.forEach((link) => {
     link.classList.add("bg-emerald-50", "text-emerald-700");
     link.classList.remove("text-gray-600", "hover:bg-gray-50");
 
-    allSections.forEach((sec) => sec.classList.add("hidden"));
+    // نخفي كل السكاشن الاول
+    mainSections.forEach((sec) => {
+      if (sec) sec.classList.add("hidden");
+    });
+
     const linkText = link.textContent.trim();
 
     if (linkText === "Product Scanner") {
@@ -397,6 +550,11 @@ sidebarLinks.forEach((link) => {
       document.getElementById("all-recipes-section").classList.remove("hidden");
     } else if (linkText === "Food Log") {
       document.getElementById("foodlog-section").classList.remove("hidden");
+    }
+
+    // نقفل السايد بار لو على موبايل
+    if (window.innerWidth < 1024) {
+      closeSidebar();
     }
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -442,7 +600,25 @@ inputSearchLog.addEventListener("click", (e) => {
 // Card Clicks
 categoriesGrid.addEventListener("click", (e) => {
   const card = e.target.closest(".category-card");
-  if (card) loadRecipes(card.dataset.category);
+  if (card) {
+    document.querySelectorAll(".category-card").forEach((c) => {
+      c.classList.remove("border-emerald-500", "bg-emerald-50");
+      c.classList.add("border-gray-100", "bg-white");
+    });
+    card.classList.remove("border-gray-100", "bg-white");
+    card.classList.add("border-emerald-500", "bg-emerald-50");
+
+    // تصفير فلاتر البلاد لما تختار Category
+    document.querySelectorAll(".cuisine-btn").forEach((b) => {
+      b.classList.remove("bg-emerald-600", "text-white", "shadow-sm");
+      b.classList.add("bg-gray-100", "text-gray-700", "hover:bg-gray-200");
+    });
+    document
+      .querySelector('.cuisine-btn[data-area="All"]')
+      ?.classList.add("bg-emerald-600", "text-white", "shadow-sm");
+
+    loadRecipes(card.dataset.category);
+  }
 });
 
 recipesGrid.addEventListener("click", (e) => {
@@ -469,6 +645,17 @@ if (logMealBtn) {
       .getElementById("search-filters-section")
       .classList.remove("hidden");
     document.getElementById("all-recipes-section").classList.remove("hidden");
+
+    // تفعيل التاب صح في السايد بار
+    sidebarLinks.forEach((l) => {
+      l.classList.remove("bg-emerald-50", "text-emerald-700");
+      l.classList.add("text-gray-600", "hover:bg-gray-50");
+      if (l.textContent.trim() === "Meals & Recipes") {
+        l.classList.add("bg-emerald-50", "text-emerald-700");
+        l.classList.remove("text-gray-600", "hover:bg-gray-50");
+      }
+    });
+
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 }
@@ -478,24 +665,17 @@ if (scanBtn) {
   scanBtn.addEventListener("click", () => {
     document.getElementById("foodlog-section").classList.add("hidden");
     document.getElementById("products-section").classList.remove("hidden");
+
+    // تفعيل التاب صح في السايد بار
+    sidebarLinks.forEach((l) => {
+      l.classList.remove("bg-emerald-50", "text-emerald-700");
+      l.classList.add("text-gray-600", "hover:bg-gray-50");
+      if (l.textContent.trim() === "Product Scanner") {
+        l.classList.add("bg-emerald-50", "text-emerald-700");
+        l.classList.remove("text-gray-600", "hover:bg-gray-50");
+      }
+    });
+
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
 }
-
-// Initialize Active Colors
-setActiveColor(
-  "#search-filters-section .flex.items-center.gap-3",
-  "button",
-  "bg-emerald-600",
-  "text-white",
-  "bg-gray-100",
-  "text-gray-700",
-);
-setActiveColor(
-  "#categories-grid",
-  ".category-card",
-  "bg-emerald-600",
-  "text-white",
-  "from-emerald-50",
-  "text-gray-900",
-);
